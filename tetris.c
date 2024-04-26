@@ -3,6 +3,7 @@
 #include <time.h>
 #include <sys/time.h>
 #include <ncurses.h>
+#include <ctype.h>
 
 #define ROWS 20 // you can change height and width of table with ROWS and COLS 
 #define COLS 10
@@ -10,21 +11,25 @@
 #define FALSE 0
 #define MAXSHAPES 7
 #define MAXNEXTPIECES 6
+#define MAXWIDTH 4
 
 char table[ROWS][COLS] = {0};
 char *Table[ROWS] = {0};
+char Buffer[ROWS][COLS] = {0};
+char NextPzBuffer[MAXNEXTPIECES][MAXWIDTH*MAXWIDTH] = {0};
 int score = 0;
 char GameOn = TRUE;
 suseconds_t timer = 400000; // decrease this to make it faster
 int decrease = 1000;
 int newLines = 0;
+char TSpin = 0;
 
 typedef struct {
-    char array[4][4];
+    char array[MAXWIDTH][MAXWIDTH];
     char wasHold;
     int width, row, col;
 } Shape;
-Shape current, pieceHold, *hold = NULL;
+Shape current, pieceHold;
 
 Shape nextPiece[MAXNEXTPIECES];
 int iNextPiece = 0, jNextPiece = MAXNEXTPIECES - 1;
@@ -41,29 +46,57 @@ Shape ShapesArray[MAXSHAPES]= {
 	// you can add any shape like it's done above. Don't be naughty.
 };
 
-char CopyMemShape(Shape *dst, Shape *org){
-    int i;
+void increaseNewLines(int lines){
+	newLines += lines;
+}
+int getNewLines(){
+	return newLines;
+}
+char getGameOn(){
+	return GameOn;
+}
+int getScore(){
+	return score;
+}
+char** getBuffer(){
+	return (char**)Buffer;
+}
+char** getNextPzBuffer(){
+	return (char**)NextPzBuffer;
+}
+
+char **getHoldPiece(){
+	return (char**)pieceHold.array;
+}
+
+char CopyMem(char *dst, char *org, unsigned int size){
+    int i, j;
 	long long *orgL = (long long*)org, *dstL = (long long*)dst;
-	if (dst == NULL || org == NULL)
+	int *orgI = (int*)org, *dstI = (int*)dst;
+	short *orgS = (short*)org, *dstS = (short*)dst;
+	if (dst == NULL)
 		return 0;
-	for (i = 0; i < sizeof(Shape) / sizeof(long long); i++)
-		dstL[i] = orgL[i];
-	i = i * sizeof(long long);
-	for (i = i; i < sizeof(Shape); i++)
-		dst[i] = org[i];
+	for (i = 0; i < size / sizeof(long long); i++)
+		dstL[i] = org != NULL ? orgL[i] : 0;
+	i = i * 2;
+	for (i = i; i < size / sizeof(int); i++)
+		dstI[i] = org != NULL ? orgI[i] : 0;
+	i = i * 2;
+	for (i = i; i < size / sizeof(short); i++)
+		dstS[i] = org != NULL ? orgS[i] : 0;
+	i = i * 2;
+	for (i = i; i < size; i++)
+		dst[i] = org != NULL ? org[i] : 0;
 	return 1;
+}
+
+char CopyMemShape(Shape *dst, Shape *org){
+	return CopyMem((char*)dst, (char*)org, sizeof(Shape));
 }
 
 Shape CopyShape(Shape shape){
 	Shape new_shape = {0};
-    int i;
-	char *org = (char*)&shape, *dst = (char*)&new_shape;
-	long long *orgL = (long long*)org, *dstL = (long long*)dst;
-	for (i = 0; i < sizeof(Shape) / sizeof(long long); i++)
-		dstL[i] = orgL[i];
-	i = i * sizeof(long long);
-	for (i = i; i < sizeof(Shape); i++)
-		dst[i] = org[i];
+	CopyMem((char*)&new_shape, (char*)&shape, sizeof(Shape));
     return new_shape;
 }
 
@@ -140,16 +173,10 @@ void RemoveFullRowsAndUpdateScore(){
 			count++;
 			int l, k;
 			char *cleanRow = Table[i];
-			long long *erase = (long long*)cleanRow;
 			for (k = i; k >= 1; k--)
 				Table[k] = Table[k-1];
 			Table[0] = cleanRow;
-			for (k = 0; k < COLS/sizeof(long long); k++)
-				erase[k] = 0;
-			k = k * sizeof(long long);
-			for (k = k; k < COLS; k++)
-				cleanRow[k] = 0;
-			timer-=decrease--;
+			CopyMem(cleanRow, NULL, sizeof(char)*COLS);
 		}
 	}
 	score += 100*count;
@@ -174,28 +201,42 @@ void AddPendingLines(){
 	}
 }
 
-void PrintTable(){
-	char Buffer[ROWS][COLS] = {0};
+void FillOutput(){
+	Shape temp = CopyShape(current);
+	while (CheckPosition(temp))
+		temp.row++;
+	temp.row--;
 	int i, j;
-	for(i = 0; i < current.width ;i++){
-		for(j = 0; j < current.width ; j++){
-			if(current.array[i][j])
+	CopyMem((char*)Buffer, NULL, sizeof(char)*ROWS*COLS);
+	for(i = 0; i < ROWS ;i++){
+		if (i < MAXNEXTPIECES){
+			char *oOutput = (char*)nextPiece[(iNextPiece + i) % MAXNEXTPIECES].array;
+			CopyMem((char*)NextPzBuffer[i],oOutput,sizeof(char)*MAXWIDTH*MAXWIDTH);
+		}
+		for(j = 0; j < COLS ; j++){
+			if((i < MAXWIDTH && j < MAXWIDTH) && current.row >=0 && current.array[i][j])
 				Buffer[current.row+i][current.col+j] = current.array[i][j];
+			if((i < MAXWIDTH && j < MAXWIDTH) && temp.row >=0 && temp.row - 1 > current.row && temp.array[i][j])
+				Buffer[temp.row+i][temp.col+j] = tolower(temp.array[i][j]);
+			Buffer[i][j] = (Table[i][j] + Buffer[i][j]) ? (Buffer[i][j]?Buffer[i][j]:Table[i][j]): '.';
 		}
 	}
+}
+
+void PrintTable(){
+	int i, j;
 	clear();
 	for(i=0; i<COLS-9; i++)
 		printw(" ");
 	printw("Covid Tetris NEXT: ");
 	j = iNextPiece;
 	for (i = 0; i < MAXNEXTPIECES; i++){
-		printw("%c -> ", nextPiece[j].array[1][1]);
-		j = (j + 1) % MAXNEXTPIECES == 0 ? 0 : j + 1;
+		printw("%c -> ", NextPzBuffer[i][1*MAXWIDTH+1]);
 	}
-	printw(" HOLD: %c \n", hold == NULL ? ' ' : hold->array[1][1]);
+	printw(" HOLD: %c \n", pieceHold.wasHold == 0 ? ' ' : pieceHold.array[1][1]);
 	for(i = 0; i < ROWS ;i++){
 		for(j = 0; j < COLS ; j++){
-			printw("%c ", (Table[i][j] + Buffer[i][j])? (Buffer[i][j]?Buffer[i][j]:Table[i][j]): '.');
+			printw("%c ", Buffer[i][j]);
 		}
 		printw("\n");
 	}
@@ -216,6 +257,7 @@ void ManipulateCurrent(int action){
 			RemoveFullRowsAndUpdateScore();
             SetNewRandomShape();
 			AddPendingLines();
+			TSpin = 0;
 			break;
 		case 's':
 			if (newLines < 0)
@@ -224,10 +266,13 @@ void ManipulateCurrent(int action){
 			if(CheckPosition(temp))
 				current.row++;
 			else {
-				WriteToTable();
-				RemoveFullRowsAndUpdateScore();
-                SetNewRandomShape();
-				AddPendingLines();
+				if (TSpin > 2){
+					WriteToTable();
+					RemoveFullRowsAndUpdateScore();
+					SetNewRandomShape();
+					AddPendingLines();
+					TSpin = 0;
+				} else TSpin++;
 			}
 			break;
 		case 'd':
@@ -243,18 +288,18 @@ void ManipulateCurrent(int action){
 		case 'r':
 			if (current.wasHold)
 				break;
-			if (hold == NULL){
-				hold = &pieceHold;
-				CopyMemShape(hold,&current);
+			if (pieceHold.wasHold == 0){
+				CopyMemShape(&pieceHold,&current);
 				SetNewRandomShape();
 				current.wasHold = 1;
+				pieceHold.wasHold = 1;
 			} else{
+				current.wasHold = 1;
 				CopyMemShape(&temp,&current);
-				CopyMemShape(&current,hold);
-				CopyMemShape(hold,&temp);
+				CopyMemShape(&current,&pieceHold);
+				CopyMemShape(&pieceHold,&temp);
 				current.col = rand()%(COLS-current.width+1);
 				current.row = 0;
-				current.wasHold = 1;
 //			    DeleteShape(current);
 				if(!CheckPosition(current)){
 					GameOn = FALSE;
@@ -273,7 +318,7 @@ void ManipulateCurrent(int action){
 			break;
 	}
 //	DeleteShape(temp);
-	PrintTable();
+	FillOutput();
 }
 
 struct timeval before_now, now;
@@ -282,7 +327,7 @@ int hasToUpdate(){
 }
 
 int main() {
-    srand(time(0));
+	srand(time(0));
 	for (int i = 0; i < ROWS; i++)
 		Table[i] = table[i];
 	for (int i = 0; i < MAXNEXTPIECES; i++){
@@ -295,18 +340,21 @@ int main() {
 	gettimeofday(&before_now, NULL);
 	timeout(1);
 	SetNewRandomShape();
+	FillOutput();
     PrintTable();
-	int wait = 5;
+	int wait = 10;
 	while(GameOn){
 		if ((c = getch()) != ERR) {
 		  ManipulateCurrent(c);
+		  PrintTable();
 		}
 		gettimeofday(&now, NULL);
 		if (hasToUpdate()) { //time difference in microsec accuracy
 			ManipulateCurrent('s');
+			PrintTable();
 			gettimeofday(&before_now, NULL);
 			if (wait == 0){
-				wait = 5;
+				wait = 10;
 				newLines += 1;
 			} else wait--;
 		}
