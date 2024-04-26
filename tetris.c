@@ -1,9 +1,13 @@
-#include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
-#include <sys/time.h>
-#include <ncurses.h>
 #include <ctype.h>
+#include <emscripten/emscripten.h>
+
+#ifdef __cplusplus
+#define EXTERN extern "C"
+#else
+#define EXTERN
+#endif
 
 #define ROWS 20 // you can change height and width of table with ROWS and COLS 
 #define COLS 10
@@ -13,28 +17,27 @@
 #define MAXNEXTPIECES 6
 #define MAXWIDTH 4
 
-char table[ROWS][COLS] = {0};
-char *Table[ROWS] = {0};
-char Buffer[ROWS][COLS] = {0};
-char NextPzBuffer[MAXNEXTPIECES][MAXWIDTH*MAXWIDTH] = {0};
-int score = 0;
-char GameOn = TRUE;
-suseconds_t timer = 400000; // decrease this to make it faster
-int decrease = 1000;
-int newLines = 0;
-char TSpin = 0;
+EXTERN EMSCRIPTEN_KEEPALIVE char table[ROWS][COLS] = {0};
+EXTERN EMSCRIPTEN_KEEPALIVE char *Table[ROWS] = {0};
+EXTERN EMSCRIPTEN_KEEPALIVE char Buffer[ROWS][COLS] = {0};
+EXTERN EMSCRIPTEN_KEEPALIVE char NextPzBuffer[MAXNEXTPIECES][MAXWIDTH*MAXWIDTH] = {0};
+EXTERN EMSCRIPTEN_KEEPALIVE int score = 0;
+EXTERN EMSCRIPTEN_KEEPALIVE char GameOn = TRUE;
+
+EXTERN EMSCRIPTEN_KEEPALIVE int newLines = 0;
+EXTERN EMSCRIPTEN_KEEPALIVE char TSpin = 0;
 
 typedef struct {
     char array[MAXWIDTH][MAXWIDTH];
     char wasHold;
     int width, row, col;
 } Shape;
-Shape current, pieceHold;
+EXTERN EMSCRIPTEN_KEEPALIVE Shape current, pieceHold;
 
-Shape nextPiece[MAXNEXTPIECES];
-int iNextPiece = 0, jNextPiece = MAXNEXTPIECES - 1;
+EXTERN EMSCRIPTEN_KEEPALIVE Shape nextPiece[MAXNEXTPIECES];
+EXTERN EMSCRIPTEN_KEEPALIVE int iNextPiece = 0, jNextPiece = MAXNEXTPIECES - 1;
 
-Shape ShapesArray[MAXSHAPES]= {
+EXTERN EMSCRIPTEN_KEEPALIVE Shape ShapesArray[MAXSHAPES]= {
 	{{{0,'G','G',0},{'G','G',0,0}, {0,0,0,0}, {0,0,0,0}}, 0, 3}, //S shape     
 	{{{'R','R',0,0},{0,'R','R',0}, {0,0,0,0}, {0,0,0,0}}, 0, 3}, //Z shape     
 	{{{0,'P',0,0},{'P','P','P',0}, {0,0,0,0}, {0,0,0,0}}, 0, 3}, //T shape     
@@ -46,30 +49,30 @@ Shape ShapesArray[MAXSHAPES]= {
 	// you can add any shape like it's done above. Don't be naughty.
 };
 
-void increaseNewLines(int lines){
+EXTERN EMSCRIPTEN_KEEPALIVE void increaseNewLines(int lines){
 	newLines += lines;
 }
-int getNewLines(){
+EXTERN EMSCRIPTEN_KEEPALIVE int getNewLines(){
 	return newLines;
 }
-char getGameOn(){
+EXTERN EMSCRIPTEN_KEEPALIVE char getGameOn(){
 	return GameOn;
 }
-int getScore(){
+EXTERN EMSCRIPTEN_KEEPALIVE int getScore(){
 	return score;
 }
-char** getBuffer(){
+EXTERN EMSCRIPTEN_KEEPALIVE char** getBuffer(){
 	return (char**)Buffer;
 }
-char** getNextPzBuffer(){
+EXTERN EMSCRIPTEN_KEEPALIVE char** getNextPzBuffer(){
 	return (char**)NextPzBuffer;
 }
 
-char **getHoldPiece(){
+EXTERN EMSCRIPTEN_KEEPALIVE char **getHoldPiece(){
 	return (char**)pieceHold.array;
 }
 
-char CopyMem(char *dst, char *org, unsigned int size){
+EXTERN EMSCRIPTEN_KEEPALIVE char CopyMem(char *dst, char *org, unsigned int size){
     int i, j;
 	long long *orgL = (long long*)org, *dstL = (long long*)dst;
 	int *orgI = (int*)org, *dstI = (int*)dst;
@@ -90,25 +93,17 @@ char CopyMem(char *dst, char *org, unsigned int size){
 	return 1;
 }
 
-char CopyMemShape(Shape *dst, Shape *org){
+EXTERN EMSCRIPTEN_KEEPALIVE char CopyMemShape(Shape *dst, Shape *org){
 	return CopyMem((char*)dst, (char*)org, sizeof(Shape));
 }
 
-Shape CopyShape(Shape shape){
+EXTERN EMSCRIPTEN_KEEPALIVE Shape CopyShape(Shape shape){
 	Shape new_shape = {0};
 	CopyMem((char*)&new_shape, (char*)&shape, sizeof(Shape));
     return new_shape;
 }
 
-void DeleteShape(Shape shape){
-    int i;
-    for(i = 0; i < shape.width; i++){
-//		free(shape.array[i]);
-    }
-//    free(shape.array);
-}
-
-int CheckPosition(Shape shape){ //Check the position of the copied shape
+EXTERN EMSCRIPTEN_KEEPALIVE int CheckPosition(Shape shape){ //Check the position of the copied shape
 	int i, j;
 	for(i = 0; i < shape.width;i++) {
 		for(j = 0; j < shape.width ;j++){
@@ -124,7 +119,7 @@ int CheckPosition(Shape shape){ //Check the position of the copied shape
 	return TRUE;
 }
 
-void SetNewRandomShape(){ //updates [current] with new shape
+EXTERN EMSCRIPTEN_KEEPALIVE void SetNewRandomShape(){ //updates [current] with new shape
 	Shape new_shape = nextPiece[iNextPiece];
     new_shape.col = rand()%(COLS-new_shape.width+1);
     new_shape.row = 0;
@@ -138,7 +133,7 @@ void SetNewRandomShape(){ //updates [current] with new shape
 	CopyMemShape(&nextPiece[jNextPiece],&ShapesArray[rand()%MAXSHAPES]);
 }
 
-void RotateShape(Shape *shape, char rotation){ //rotates clockwise
+EXTERN EMSCRIPTEN_KEEPALIVE void RotateShape(Shape *shape, char rotation){ //rotates clockwise
 	Shape temp = CopyShape(*shape);
 	int i, j, k, width;
 	width = shape->width;
@@ -151,7 +146,7 @@ void RotateShape(Shape *shape, char rotation){ //rotates clockwise
 //	DeleteShape(temp);
 }
 
-void WriteToTable(){
+EXTERN EMSCRIPTEN_KEEPALIVE void WriteToTable(){
 	int i, j;
 	for(i = 0; i < current.width ;i++){
 		for(j = 0; j < current.width ; j++){
@@ -161,7 +156,7 @@ void WriteToTable(){
 	}
 }
 
-void RemoveFullRowsAndUpdateScore(){
+EXTERN EMSCRIPTEN_KEEPALIVE void RemoveFullRowsAndUpdateScore(){
 	int i, j, sum, count=0;
 	for(i=0;i<ROWS;i++){
 		sum = 0;
@@ -185,7 +180,7 @@ void RemoveFullRowsAndUpdateScore(){
 	}
 }
 
-void AddPendingLines(){
+EXTERN EMSCRIPTEN_KEEPALIVE void AddPendingLines(){
 	Shape temp = CopyShape(current);
 	temp.row++;
 	int i, j;
@@ -201,7 +196,7 @@ void AddPendingLines(){
 	}
 }
 
-void FillOutput(){
+EXTERN EMSCRIPTEN_KEEPALIVE void FillOutput(){
 	Shape temp = CopyShape(current);
 	while (CheckPosition(temp))
 		temp.row++;
@@ -223,27 +218,7 @@ void FillOutput(){
 	}
 }
 
-void PrintTable(){
-	int i, j;
-	clear();
-	for(i=0; i<COLS-9; i++)
-		printw(" ");
-	printw("Covid Tetris NEXT: ");
-	j = iNextPiece;
-	for (i = 0; i < MAXNEXTPIECES; i++){
-		printw("%c -> ", NextPzBuffer[i][1*MAXWIDTH+1]);
-	}
-	printw(" HOLD: %c \n", pieceHold.wasHold == 0 ? ' ' : pieceHold.array[1][1]);
-	for(i = 0; i < ROWS ;i++){
-		for(j = 0; j < COLS ; j++){
-			printw("%c ", Buffer[i][j]);
-		}
-		printw("\n");
-	}
-	printw("\nScore: %d\n", score);
-}
-
-void ManipulateCurrent(int action){
+EXTERN EMSCRIPTEN_KEEPALIVE void ManipulateCurrent(int action){
 	Shape temp = CopyShape(current);
 	switch(action){
 		case 'w':
@@ -321,11 +296,6 @@ void ManipulateCurrent(int action){
 	FillOutput();
 }
 
-struct timeval before_now, now;
-int hasToUpdate(){
-	return ((suseconds_t)(now.tv_sec*1000000 + now.tv_usec) -((suseconds_t)before_now.tv_sec*1000000 + before_now.tv_usec)) > timer;
-}
-
 int main() {
 	srand(time(0));
 	for (int i = 0; i < ROWS; i++)
@@ -336,39 +306,7 @@ int main() {
 	}
     score = 0;
     int c;
-    initscr();
-	gettimeofday(&before_now, NULL);
-	timeout(1);
 	SetNewRandomShape();
 	FillOutput();
-    PrintTable();
-	int wait = 10;
-	while(GameOn){
-		if ((c = getch()) != ERR) {
-		  ManipulateCurrent(c);
-		  PrintTable();
-		}
-		gettimeofday(&now, NULL);
-		if (hasToUpdate()) { //time difference in microsec accuracy
-			ManipulateCurrent('s');
-			PrintTable();
-			gettimeofday(&before_now, NULL);
-			if (wait == 0){
-				wait = 10;
-				newLines += 1;
-			} else wait--;
-		}
-	}
-	DeleteShape(current);
-	endwin();
-	int i, j;
-	for(i = 0; i < ROWS ;i++){
-		for(j = 0; j < COLS ; j++){
-			printf("%c ", Table[i][j] ? '#': '.');
-		}
-		printf("\n");
-	}
-	printf("\nGame ouvre!\n");
-	printf("\nScore: %d\n", score);
     return 0;
 }
